@@ -5,7 +5,7 @@
 	"source": "index.html",
 	"scripts": {
 		"serve": "parcel --port 8080",
-		"build": "parcel build --dist-dir ../public/fsm-simulator --public-url /fsm-simulator/ --no-cache --no-optimize"
+		"build": "parcel build --dist-dir ../html/fsm-simulator --public-url /~trichard/fsm-simulator/ --no-cache --no-optimize"
 	},
 	"author": "Tyler Richard",
 	"license": "GPL",
