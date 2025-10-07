@@ -1,10 +1,8 @@
 import "./style.css";
-import { setupCanvas } from "./fsm";
+import { setupFSMViewer } from "./fsm";
 import { setupUI } from "./ui";
 
 document.addEventListener("DOMContentLoaded", () => {
-	const p = setupCanvas();
-	setupUI(() => {
-		p.redraw();
-	});
+	const redraw = setupFSMViewer();
+	setupUI(redraw);
 });

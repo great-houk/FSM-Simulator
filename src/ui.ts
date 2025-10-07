@@ -1,92 +1,202 @@
-// ui.ts
-interface Transition {
-	from: string;
-	input: string;
-	to: string;
+import { FSM } from './fsm';
+import { examples } from './examples';
+
+let fsm: FSM | null = null;
+let history: string[] = [];
+let current_state_index = 0;
+let activeInput: string | null = null;
+
+let fsmSelect: HTMLSelectElement | null = null;
+let prevStepButton: HTMLButtonElement | null = null;
+let nextStepButton: HTMLButtonElement | null = null;
+let currentStateSpan: HTMLSpanElement | null = null;
+let inputButtonsDiv: HTMLDivElement | null = null;
+let outputIndicatorsDiv: HTMLDivElement | null = null;
+let logOutputDiv: HTMLDivElement | null = null;
+
+function logToConsole(message: string): void {
+	if (logOutputDiv) {
+		const p = document.createElement('p');
+		p.innerText = message;
+		logOutputDiv.appendChild(p);
+		logOutputDiv.scrollTop = logOutputDiv.scrollHeight;
+	}
 }
 
-let states: string[] = [];
-let transitions: Transition[] = [];
-let outputs: Record<string, string> = {};
+function createOutputIndicators(): void {
+	if (outputIndicatorsDiv && fsm) {
+		outputIndicatorsDiv.innerHTML = '';
+		const outputs = fsm.getOutputs();
+		for (const output of outputs) {
+			const indicator = document.createElement('div');
+			indicator.className = 'alert alert-secondary';
+			indicator.id = `output-${output}`;
+			indicator.innerText = output;
+			outputIndicatorsDiv.appendChild(indicator);
+		}
+	}
+}
 
-const transitionTable = document.getElementById("transition-table")?.querySelector("tbody") as HTMLTableSectionElement;
-const outputTable = document.getElementById("output-table")?.querySelector("tbody") as HTMLTableSectionElement;
-const stateCountDropdown = document.getElementById("stateCount") as HTMLSelectElement;
-const outputCountDropdown = document.getElementById("outputCount") as HTMLSelectElement;
+function loadFSM(name: string, redrawCallback: () => void): void {
+	if (logOutputDiv) {
+		logOutputDiv.innerHTML = '';
+	}
+    fsm = new FSM(examples[name]);
+    history = [fsm.getInitialState()];
+    current_state_index = 0;
+    fsm.set_active_state(history[current_state_index]);
+    updateCurrentStateDisplay();
+    createInputButtons(redrawCallback);
+	createOutputIndicators();
+	logToConsole(`Loaded FSM: ${name}`);
+	logToConsole(`Initial state: ${fsm.getInitialState()}`);
+}
+
+function updateCurrentStateDisplay(): void {
+    if (currentStateSpan) {
+        currentStateSpan.innerText = history[current_state_index];
+    }
+}
+
+function createInputButtons(redrawCallback: () => void): void {
+    if (inputButtonsDiv && fsm) {
+        inputButtonsDiv.innerHTML = '';
+        const inputs = fsm.getData().inputs;
+
+        const exclusiveGroups: Record<number, { name: string, exclusiveGroup?: number }[]> = {};
+        const nonExclusiveInputs: { name: string, exclusiveGroup?: number }[] = [];
+
+        for (const input of inputs) {
+            if (input.exclusiveGroup !== undefined) {
+                if (!exclusiveGroups[input.exclusiveGroup]) {
+                    exclusiveGroups[input.exclusiveGroup] = [];
+                }
+                exclusiveGroups[input.exclusiveGroup].push(input);
+            } else {
+                nonExclusiveInputs.push(input);
+            }
+        }
+
+        for (const groupId in exclusiveGroups) {
+            const group = exclusiveGroups[groupId];
+            const inputGroup = document.createElement('div');
+            inputGroup.className = 'btn-group mb-2';
+            inputGroup.setAttribute('role', 'group');
+
+            for (const input of group) {
+                const inputRadio = document.createElement('input');
+                inputRadio.type = 'radio';
+                inputRadio.className = 'btn-check';
+                inputRadio.name = `input-radio-${groupId}`;
+                inputRadio.id = `input-${input.name}`;
+                inputRadio.autocomplete = 'off';
+                if (activeInput === input.name) {
+                    inputRadio.checked = true;
+                }
+                inputRadio.addEventListener('click', () => {
+                    if (activeInput === input.name) {
+                        inputRadio.checked = false;
+                        activeInput = null;
+                    } else {
+                        activeInput = input.name;
+                    }
+                });
+
+                const inputLabel = document.createElement('label');
+                inputLabel.className = 'btn btn-outline-primary';
+                inputLabel.setAttribute('for', `input-${input.name}`);
+                inputLabel.innerText = input.name;
+
+                inputGroup.appendChild(inputRadio);
+                inputGroup.appendChild(inputLabel);
+            }
+            inputButtonsDiv.appendChild(inputGroup);
+        }
+
+        const nonExclusiveButtons: HTMLButtonElement[] = [];
+        for (const input of nonExclusiveInputs) {
+            const button = document.createElement('button');
+            button.innerText = input.name;
+            button.className = 'btn btn-secondary me-2 mb-2';
+            button.addEventListener('click', () => {
+                activeInput = input.name;
+                button.classList.toggle('btn-primary');
+                button.classList.toggle('btn-secondary');
+            });
+            nonExclusiveButtons.push(button);
+            inputButtonsDiv.appendChild(button);
+        }
+    }
+}
 
 export function setupUI(redrawCallback: () => void): void {
-	function updateStates(): void {
-		const count = parseInt(stateCountDropdown.value);
-		states = Array.from({ length: count }, (_, i) => `S${i}`);
-	}
+    fsmSelect = document.getElementById('fsm-select') as HTMLSelectElement;
+    prevStepButton = document.getElementById('prev-step') as HTMLButtonElement;
+    nextStepButton = document.getElementById('next-step') as HTMLButtonElement;
+    currentStateSpan = document.getElementById('current-state') as HTMLSpanElement;
+            inputButtonsDiv = document.getElementById('input-buttons') as HTMLDivElement;
+        	outputIndicatorsDiv = document.getElementById('output-indicators') as HTMLDivElement;
+        	logOutputDiv = document.getElementById('log-output') as HTMLDivElement;	    for (const example in examples) {        const option = document.createElement('option');
+        option.value = example;
+        option.innerText = example;
+        fsmSelect.appendChild(option);
+    }
 
-	function buildTransitionTable(): void {
-		transitionTable.innerHTML = "";
-		for (let i = 0; i < states.length; i++) {
-			const row = document.createElement("tr");
-			row.innerHTML = `
-		  <td contenteditable="true">${states[i]}</td>
-		  <td contenteditable="true">0</td>
-		  <td contenteditable="true">${states[(i + 1) % states.length]}</td>
-		`;
-			transitionTable.appendChild(row);
-		}
-	}
-
-	function buildOutputTable(): void {
-		outputTable.innerHTML = "";
-		const outputCols = parseInt(outputCountDropdown.value);
-		for (let state of states) {
-			const row = document.createElement("tr");
-			row.innerHTML = `
-		  <td contenteditable="true">${state}</td>
-		  <td contenteditable="true">${"0".repeat(outputCols)}</td>
-		`;
-			outputTable.appendChild(row);
-		}
-	}
-
-	function updateFSMData(): void {
-		transitions = [];
-		outputs = {};
-
-		Array.from(transitionTable.rows).forEach(row => {
-			const from = row.cells[0].innerText.trim();
-			const input = row.cells[1].innerText.trim();
-			const to = row.cells[2].innerText.trim();
-			transitions.push({ from, input, to });
-		});
-
-		Array.from(outputTable.rows).forEach(row => {
-			const state = row.cells[0].innerText.trim();
-			const output = row.cells[1].innerText.trim();
-			outputs[state] = output;
-		});
-
+    fsmSelect.addEventListener('change', () => {
+        loadFSM(fsmSelect.value, redrawCallback);
 		redrawCallback();
-	}
+    });
 
-	stateCountDropdown.addEventListener("change", () => {
-		updateStates();
-		buildTransitionTable();
-		buildOutputTable();
-		updateFSMData();
+    prevStepButton.addEventListener('click', () => {
+        if (current_state_index > 0) {
+            current_state_index--;
+            fsm?.set_active_state(history[current_state_index]);
+            updateCurrentStateDisplay();
+            redrawCallback();
+        }
+    });
+
+	nextStepButton.addEventListener('click', () => {
+		if (fsm && activeInput) {
+			const current_state = history[current_state_index];
+			const result = fsm.getNextState(current_state, activeInput);
+			if (result) {
+				const { nextState, output } = result;
+				if (current_state_index === history.length - 1) {
+					history.push(nextState);
+					current_state_index++;
+				} else {
+					current_state_index++;
+					history.splice(current_state_index, history.length - current_state_index, nextState);
+				}
+				fsm.set_active_state(nextState);
+				updateCurrentStateDisplay();
+				redrawCallback();
+				logToConsole(`Transition: ${current_state} -> ${nextState} on input ${activeInput}`);
+
+				if (output) {
+					const outputs = Array.isArray(output) ? output : [output];
+					logToConsole(`Output: ${outputs.join(', ')}`);
+					for (const o of outputs) {
+						const indicator = document.getElementById(`output-${o}`);
+						if (indicator) {
+							indicator.classList.remove('alert-secondary');
+							indicator.classList.add('alert-success');
+							setTimeout(() => {
+								indicator.classList.remove('alert-success');
+								indicator.classList.add('alert-secondary');
+							}, 500);
+						}
+					}
+				}
+			}
+		}
 	});
 
-	outputCountDropdown.addEventListener("change", () => {
-		buildOutputTable();
-		updateFSMData();
-	});
-
-	transitionTable.addEventListener("input", updateFSMData);
-	outputTable.addEventListener("input", updateFSMData);
-
-	updateStates();
-	buildTransitionTable();
-	buildOutputTable();
-	updateFSMData();
+    loadFSM(Object.keys(examples)[0], redrawCallback);
+	redrawCallback();
 }
 
-export function getFSMData(): { states: string[]; transitions: Transition[]; outputs: Record<string, string> } {
-	return { states, transitions, outputs };
+export function getFSM(): FSM | null {
+    return fsm;
 }
